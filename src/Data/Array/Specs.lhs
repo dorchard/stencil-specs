@@ -1,38 +1,29 @@
-> {-# LANGUAGE GADTs #-}
-> {-# LANGUAGE EmptyDataDecls #-}
-> {-# LANGUAGE FunctionalDependencies #-}
-> {-# LANGUAGE FlexibleInstances #-}
-> {-# LANGUAGE OverlappingInstances #-}
-> {-# LANGUAGE FlexibleContexts #-}
-> {-# LANGUAGE UndecidableInstances #-}
+> {-# LANGUAGE GADTs, EmptyDataDecls, MultiParamTypeClasses, FlexibleInstances #-}
+> {-# LANGUAGE TypeFamilies, FlexibleContexts, ConstraintKinds #-}
 
-> {-# LANGUAGE TypeFamilies #-}
-> {-# LANGUAGE KindSignatures #-}
-> {-# LANGUAGE ConstraintKinds #-}
-
-> module Data.Array.Specs((!!!), HCons, HNil, 
->                         Z(), S(), Neg(), Pos(), 
+> module Data.Array.Specs((!!!), Spec,
+>                         Z(), S(), Neg(),  
 >                         Nat(..), IntT(..), Member,
->                         toValue,
->                         Symmetry, Backward, Forward, SpecArray) where
+>                         Symmetrical, Backward, Forward) where
 
 > import Data.Array
 > import Data.HList
 > import GHC.Prim
 
+Type-level natural numbers and integers for relative indices
+
 > data Z
 > data S n 
 
 > data Nat n where
->     Z :: Nat Z
->     S :: Nat n -> Nat (S n)
+>    Z :: Nat Z
+>    S :: Nat n -> Nat (S n)
 
 > natToInt :: Nat n -> Int
 > natToInt Z = 0
 > natToInt (S n) = 1 + natToInt n
 
 > data Neg n
-> data Pos n
 
 > data IntT n where
 >    Neg :: Nat (S n) -> IntT (Neg (S n))
@@ -54,43 +45,70 @@
 > instance (ToValue m Int, ToValue n Int) => ToValue (m, n) (Int, Int) where
 >     toValue (m, n) = (toValue m, toValue n)
 
-> data SpecArray i as a = SpecArray (Array i a)
+Arrays with specifications 
+
+ data SpecArray x i a = SpecArray (Array i a)
+
+> data Spec x a = Spec a
+
+Array indexing with specification
+
+> (!!!) :: (Member n ns, HList ns, ToValue n i, Ix i) => Spec ns (Array i a) -> n -> a
+> (!!!) (Spec x) n = x ! (toValue n)
 
 > class Member x xs 
 > instance Member x (HCons x xs)
 > instance (Member x xs) => Member x (HCons y xs)
 
-> (!!!) :: (Member n ns, HList ns, ToValue n i, Ix i) => SpecArray i ns a -> n -> a
-> (!!!) (SpecArray x) n = x ! (toValue n)
+> type SpecBase as = HList as
 
-> type SpecBase as = HList as 
+Forward-oriented stencils 
 
-> type family Symmetry depth as :: Constraint
-> type instance Symmetry Z as = (SpecBase as, Member (IntT Z) as, ToValue (IntT Z) Int) 
-> type instance Symmetry (S n) as = (Member (IntT (S n)) as, Member (IntT (Neg (S n))) as, Symmetry n as, ToValue (IntT (S n)) Int, ToValue (IntT (Neg (S n))) Int) 
+> type Forward depth a = (SpecBase a, ForwardP depth a)
 
-> type family Forward depth as :: Constraint
-> type instance Forward Z as = (SpecBase as, Member (IntT Z) as)
-> type instance Forward (S n) as = (Member (IntT (S n)) as, Forward n as)
+> type family ForwardP depth a :: Constraint
+> type instance ForwardP Z a = (Member (IntT Z) a)
 
-> type family Backward depth as :: Constraint
-> type instance Backward Z as = (SpecBase as, Member (IntT Z) as)
-> type instance Backward (S n) as = (Member (IntT (Neg (S n))) as, Backward n as)
+> type instance ForwardP (S n) a = (Member (IntT (S n)) a,
+>                                    ForwardP n a)
 
-> type instance Symmetry (Z, Z) as = (SpecBase as, Member (IntT Z, IntT Z) as)
-> type instance Symmetry (S m, Z) as = (SpecBase as,
->                                       Member (IntT (S m), IntT Z) as, 
->                                       Member (IntT (Neg (S m)), IntT Z) as,
->                                       Symmetry (m, Z) as)
-> type instance Symmetry (Z, S n) as = (SpecBase as,
->                                       Member (IntT Z, IntT (S n)) as,
->                                       Member (IntT Z, IntT (Neg (S n))) as,
->                                       Symmetry (Z, n) as)
-> type instance Symmetry (S m, S n) as = (Member (IntT (S m), IntT (S n)) as,
->                                         Member (IntT (S m), IntT (S n)) as,
->                                         Member (IntT (Neg (S m)), IntT (S n)) as,
->                                         Member (IntT (Neg (S m)), IntT (Neg (S n))) as,
->                                         Symmetry (m, S n) as,
->                                         Symmetry (S m, n) as,
->                                         Symmetry (m, n) as)
+> type instance ForwardP (Z, Z) a = (Member (IntT Z, IntT Z) a)
 
+> type instance ForwardP (S m, Z) a = (Member (IntT (S m), IntT Z) a,
+>                                      ForwardP (m, Z) a)
+
+> type instance ForwardP (Z, S n) a = (Member (IntT Z, IntT (S n)) a,
+>                                      ForwardP (Z, n) a)
+
+> type instance ForwardP (S m, S n) a = (Member (IntT (S m), IntT (S n)) a,
+>                                        ForwardP (S m, n) a,
+>                                        ForwardP (m, S n) a,
+>                                        ForwardP (m, n) a)
+
+Backward-oriented stencils
+
+> type Backward depth a = (SpecBase a, BackwardP depth a)
+
+> type family BackwardP depth a :: Constraint
+
+> type instance BackwardP Z as = Member (IntT Z) as
+
+> type instance BackwardP (S n) as = (Member (IntT (Neg (S n))) as,
+>                                     BackwardP n as)
+
+> type instance BackwardP (Z, Z) a = (Member (IntT Z, IntT Z) a)
+
+> type instance BackwardP (S m, Z) a = (Member (IntT (Neg (S m)), IntT Z) a,
+>                                       BackwardP (m, Z) a)
+
+> type instance BackwardP (Z, S n) a = (Member (IntT Z, IntT (Neg (S n))) a,
+>                                       BackwardP (Z, n) a)
+
+> type instance BackwardP (S m, S n) a = (Member (IntT (Neg (S m)), IntT (Neg (S n))) a,
+>                                         BackwardP (S m, n) a,
+>                                         BackwardP (m, S n) a,
+>                                         BackwardP (m, n) a)
+
+Symmetrical stencils (derived from Forward and Backward stencils of the same depth)
+
+> type Symmetrical depth a = (SpecBase a, ForwardP depth a, BackwardP depth a)
