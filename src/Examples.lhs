@@ -62,7 +62,5 @@ because
         + x!!!(Neg (S Z), Pos Z)
         + x!!!(Pos (S Z), Pos (S Z))
 
- 
-
-> ef :: Num a => Sym a
-> ef = Sym $ \x -> (x !!! (Pos Z)) + (x !!! (Pos (S Z))) + (x !!! (Neg (S Z)))
+ ef :: Num a => Sym a
+ ef = Sym $ \x -> (x !!! (Pos Z)) + (x !!! (Pos (S Z))) + (x !!! (Neg (S Z)))
