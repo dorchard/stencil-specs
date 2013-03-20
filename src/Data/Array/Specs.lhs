@@ -1,11 +1,14 @@
 > {-# LANGUAGE GADTs, EmptyDataDecls, MultiParamTypeClasses, FlexibleInstances #-}
 > {-# LANGUAGE TypeFamilies, FlexibleContexts, ConstraintKinds, OverlappingInstances #-}
-> {-# LANGUAGE RankNTypes #-}
+> {-# LANGUAGE TypeOperators #-}
 
-> module Data.Array.Specs((!!!), Spec(..), HCons, HNil,
+> {-# LANGUAGE UndecidableInstances #-}
+
+> module Data.Array.Specs((!!!), (:=)(..), HCons, HNil,
 >                         Z(), S(), Neg(),  
->                         Nat(..), IntT(..), Member, SymmA, SymmAB, Foo, 
->                         Symmetrical, Backward, Forward, Sym(..),
+>                         Nat(..), IntT(..), Member,
+>                         Symmetrical, Backward, Forward,
+>                         Symm2
 >                         ) where
 
 > import Data.Array
@@ -51,11 +54,11 @@ Arrays with specifications
 
  data SpecArray x i a = SpecArray (Array i a)
 
-> data Spec x a = Spec a
+> data x := a = Spec a
 
 Array indexing with specification
 
-> (!!!) :: (Member n ns, HList ns, ToValue n i, Ix i) => Spec ns (Array i a) -> n -> a
+> (!!!) :: (Member n ns, HList ns, ToValue n i, Ix i) => (ns := (Array i a)) -> n -> a
 > (Spec x) !!! n = x ! (toValue n)
 
 > class Member x xs 
@@ -116,25 +119,32 @@ Symmetrical stencils (derived from Forward and Backward stencils of the same dep
 > type Symmetrical depth a = (SpecBase a, ForwardP depth a, BackwardP depth a)
 
 
-> type SymmA x = SymmAB x x
+ class Symm2 n x
+ instance (HList x, Member (IntT Z) x) => Symm2 Z x
+ instance (HList x, Member (IntT (S n)) x, Symm2 n x) => Symm2 (S n) x
+ instance (HList x, Member (IntT (Neg (S n))) x, Symm2 (Neg n) x) => Symm2 (Neg (S n)) x
+
+Playing around with some other options
+
+> type Symm2 x = SymmAB x x
 
 > type family SymmAB x a :: Constraint
 > type instance SymmAB HNil a = ()
 > type instance SymmAB (HCons (IntT (Neg x)) xs) a = (Member (IntT (Neg x)) a,
 >                                                     Member (IntT x) a, SymmAB xs a)
+
 > type instance SymmAB (HCons (IntT Z) xs) a = (Member (IntT Z) a, SymmAB xs a)
 > type instance SymmAB (HCons (IntT (S n)) xs) a = (Member (IntT (S n)) a,
->                                                    Member (IntT (Neg (S n))) a, SymmAB xs a)
+>                                                   Member (IntT (Neg (S n))) a, SymmAB xs a)
 
 
-> type family Foo (t :: Constraint) :: Constraint
-> type instance Foo () = ()
-> type instance Foo ((Member (IntT (Neg n)) xs), rs) = (Member (IntT (Neg n)) xs,
->                                                       Member (IntT n) xs,
->                                                       Foo rs)
-> type instance Foo ((Member (IntT (S n)) xs), rs) = (Member (IntT (Neg (S n))) xs,
->                                                     Member (IntT (S n)) xs,
->                                                     Foo rs)
-
-> data Sym t where
->     Sym :: (Foo c => Spec x (Array Int a) -> a) -> Sym a
+ type family Foo (t :: Constraint) :: Constraint
+ type instance Foo () = ()
+ type instance Foo ((Member (IntT (Neg n)) xs), rs) = (Member (IntT (Neg n)) xs,
+                                                       Member (IntT n) xs,
+                                                       Foo rs)
+ type instance Foo ((Member (IntT (S n)) xs), rs) = (Member (IntT (Neg (S n))) xs,
+                                                     Member (IntT (S n)) xs,
+                                                     Foo rs)
+ data Sym t where
+     Sym :: (Foo c => Spec x (Array Int a) -> a) -> Sym a
