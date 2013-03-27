@@ -4,6 +4,7 @@
 
 > import Data.Array.Specs
 > import Data.Array
+> import Data.HList
 
 > f :: (Num a, Symmetrical (S Z) x) => x := (Array Int a) -> a
 > f x = x !!! (Pos Z) + x !!! (Pos (S Z)) + x !!! (Neg (S Z))
@@ -51,10 +52,10 @@ because
 >        + x!!!(Neg (S Z), Pos Z)
 >        + x!!!(Pos (S Z), Pos (S Z))
 
-> ef :: (Num a, Symm2 x) => x := (Array Int a) -> a
-> ef x = x !!! (Pos Z) + x !!! (Pos (S Z)) + x !!! (Neg (S Z))
+ ef :: (Num a, Symm2 x) => x := (Array Int a) -> a
+ ef x = x !!! (Pos Z) + x !!! (Pos (S Z)) + x !!! (Neg (S Z))
 
-> foo = ef x
+ foo = ef x
 
  f6 :: (Num a, SymmA x) => Spec x (Array (Int, Int) a) -> a
  f6 x =   x!!!(Pos Z, Pos Z)

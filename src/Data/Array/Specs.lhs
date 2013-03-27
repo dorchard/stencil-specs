@@ -3,17 +3,32 @@
 > {-# LANGUAGE TypeOperators #-}
 
 > {-# LANGUAGE UndecidableInstances #-}
+> {-# LANGUAGE FunctionalDependencies #-}
 
-> module Data.Array.Specs((!!!), (:=)(..), HCons, HNil,
->                         Z(), S(), Neg(),  
->                         Nat(..), IntT(..), Member,
->                         Symmetrical, Backward, Forward,
->                         Symm2
->                         ) where
+> {-# LANGUAGE DataKinds #-}
+
+> module Data.Array.Specs where
+>                         -- ((!!!), (:=)(..), HCons, HNil,
+>                         -- Z(), S(), Neg(),  
+>                         -- Nat(..), IntT(..), Member,
+>                         -- Symmetrical, Backward, Forward,
+>                         -- Symm2
+>                         -- ) where
 
 > import Data.Array
-> import Data.HList
+
+ import Data.HList
+
 > import GHC.Prim
+
+> data HNil
+> data HCons x xs
+
+> data HList t where
+>     HNil :: HList HNil
+>     HCons :: x -> HList xs -> HList (Cons x xs)
+
+> type HList t = () :: Constraint
 
 Type-level natural numbers and integers for relative indices
 
@@ -148,3 +163,50 @@ Playing around with some other options
                                                      Foo rs)
  data Sym t where
      Sym :: (Foo c => Spec x (Array Int a) -> a) -> Sym a
+
+
+Inverse
+
+> (!!!<) :: (NotMember n negs, HList negs, ToValue n i, Ix i) => (negs := (Array i a)) -> n -> a
+> (Spec x) !!!< n = x ! (toValue n)
+
+> class NotMemberP x xs 
+> instance NotMemberP x HNil
+> instance (NotMemberP x xs) => NotMemberP x (HCons y xs)
+
+> data False
+> data True
+
+> class MemberPf x xs r | x xs -> r
+> instance MemberPf x HNil False
+> instance MemberPf x (HCons x xs) True
+> instance (MemberPf x xs t) => MemberPf x (HCons y xs) t
+
+> type family NotMember x (xs :: HList)  :: Constraint
+> type instance NotMember x HNil = (MemberPf x HNil False)
+> type instance NotMember x (HCons y xs) = (MemberPf x (HCons y xs) False, NotMember x xs)
+
+> foop :: (Num a, NSymm (S Z) x, HList x) => (x := (Array Int a)) -> a
+> foop x = x !!!< (Pos (S Z)) --  x !!!< (Neg (S Z))
+
+
+> ntest :: MemberPf n xs False => n -> xs -> ()
+> ntest _ _ = ()
+
+
+> type family NSymm depth x :: Constraint
+> type instance NSymm Z x = (MemberPf (IntT Z) x False)
+> type instance NSymm (S n) x = (MemberPf (IntT (S n)) x False,
+>                                MemberPf (IntT (Neg (S n))) x False,
+>                                NSymm (IntT n) x)
+> type instance NSymm (Neg (S n)) x = (MemberPf (IntT (S n)) x False,
+>                                      MemberPf (IntT (Neg (S n))) x False,
+>                                      NSymm (IntT (Neg n)) x)
+>     
+
+> type family TSymm depth
+> type instance TSymm Z = HNil
+> type instance TSymm (S n) = HCons (IntT (S n)) (HCons (IntT (Neg (S n))) (TSymm n))
+
+> foopa :: (Num a, Symmetrical (S Z) xs, xs ~ TSymm (S Z)) => (xs := (Array Int a)) -> a
+> foopa x = x !!! (Pos (S Z))  -- + x !!! (Neg (S Z))
