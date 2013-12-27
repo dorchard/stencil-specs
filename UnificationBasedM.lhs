@@ -37,12 +37,9 @@ The following causes a type error
 
 
   fooSymBroken :: (Num a) => StencilM a (Symmetrical (S Z)) a a
-
   fooSymBroken = StencilM $ do a <- ix (Pos Z)
-
-                               b <- ix (Pos (S Z))
-  
-                               return $ a + b 
+                              b <- ix (Pos (S Z))
+                              return $ a + b 
 
 
 fooFwd has a 'forward' pattern to depth of 2
