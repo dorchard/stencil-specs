@@ -9,7 +9,7 @@ Preface
 The following shows how to use Haskell's type system for defining data access pattern specifications
 on stencil computations (common in finite element approaches). This is defined here only for
 one-dimensional arrays. It uses some type-level machinery
-(type families and GADTs) and indexed monads [1,2] (the dual of indexed comonads [3]) to abstract
+(type families and GADTs) and indexed monads [1],[2] (the dual of indexed comonads [3]) to abstract
 the composition of computations with specifications. 
 
 [1] http://www.cl.cam.ac.uk/~dao29/drafts/ixmonad-eabstract.pdf
@@ -52,7 +52,7 @@ fooFwd has a 'forward' pattern to depth of 2
 Indexed monad
 ------------------------------------------------
 
-See [1,2,3] above.
+See [1],[2],[3] above.
 
 > class IxMonad (m :: * -> * -> *) where
 >     type MPlus m s t 
