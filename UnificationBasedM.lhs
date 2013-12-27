@@ -24,7 +24,11 @@ over indexed monads. We therefore need to import a whole load of stuff from Prel
 Example stencils with data access specifications
 ------------------------------------------------
 
-fooSym has a three-point symmetrical stencil to depth of 1
+Stencils are defined in terms of "relative" indexing operations relative to a cursor
+that is paired with an array. The following (fooSym) defines
+a three-point symmetrical stencil to depth of 1, indexing the current
+position (at offset 0, written Pos Z), at offset 1 (written (Pos (S Z))), and
+offset -1 (written (Neg (S Z))). 
 
 > fooSym :: (Num a) => StencilM a (Symmetrical (S Z)) a a
 > fooSym = StencilM $ do a <- ix (Pos Z)
@@ -33,13 +37,13 @@ fooSym has a three-point symmetrical stencil to depth of 1
 >                        return $ a + b + c 
 
 ---------------------------------
-The following causes a type error
+The following causes a type error as it violates the specification
+of symmetry
 
-
-  fooSymBroken :: (Num a) => StencilM a (Symmetrical (S Z)) a a
-  fooSymBroken = StencilM $ do a <- ix (Pos Z)
-                              b <- ix (Pos (S Z))
-                              return $ a + b 
+> --  fooSymBroken :: (Num a) => StencilM a (Symmetrical (S Z)) a a
+> -- fooSymBroken = StencilM $ do a <- ix (Pos Z)
+> --                              b <- ix (Pos (S Z))
+> --                              return $ a + b 
 
 
 fooFwd has a 'forward' pattern to depth of 2
