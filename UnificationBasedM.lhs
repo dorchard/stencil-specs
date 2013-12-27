@@ -3,7 +3,6 @@
 
 > import Data.Array
 
-------------------------------------------------
 Preface
 ------------------------------------------------
 
@@ -22,7 +21,6 @@ over indexed monads. We therefore need to import a whole load of stuff from Prel
 
 > import Prelude hiding (Monad(..)) -- (Functor(..), Num(..), Int, (+), flip, ($), fail)
 
-------------------------------------------------
 Example stencils with data access specifications
 ------------------------------------------------
 
@@ -34,6 +32,15 @@ fooSym has a three-point symmetrical stencil to depth of 1
 >                        c <- ix (Neg (S Z))
 >                        return $ a + b + c 
 
+---------------------------------
+The following causes a type error
+
+ fooSymBroken :: (Num a) => StencilM a (Symmetrical (S Z)) a a
+ fooSymBroken = StencilM $ do a <- ix (Pos Z)
+                              b <- ix (Pos (S Z))
+                              return $ a + b 
+
+
 fooFwd has a 'forward' pattern to depth of 2
 
 > fooFwd :: Num a => StencilM a (Forward (S (S Z))) a a
@@ -42,7 +49,6 @@ fooFwd has a 'forward' pattern to depth of 2
 >                        c <- ix (Pos (S (S Z)))
 >                        return $ a + b + c
 
-------------------------------------------------
 Indexed monad
 ------------------------------------------------
 
@@ -58,13 +64,19 @@ See [1,2,3] above.
 >     fail :: String -> m () () 
 >     fail = error "Fail not implemented"
 
-------------------------------------------------
-The following defines an indexed reader monad 
-(http://www.cl.cam.ac.uk/~dao29/drafts/ixmonad-eabstract.pdf)
 
-Reader-like wrapper on array stencil computations, with elemet type e to e'
+Specification-indexed array reader monad
+--------------------------------------------------
+
+The following defines a kind of indexed reader monad 
+(http://www.cl.cam.ac.uk/~dao29/drafts/ixmonad-eabstract.pdf)
+for array stencil computations, with elemet type e to e'
 
 > data ArrayReader e r e' = ArrayReader (SpecArray r e -> e')
+
+1D array paired with the current "cursor" position
+
+> data SpecArray x a = MkSA (Array Int a, Int) 
 
 > instance IxMonad (ArrayReader e) where
 >     type MPlus (ArrayReader e) s t = Append s t -- append specs
@@ -74,28 +86,20 @@ Reader-like wrapper on array stencil computations, with elemet type e to e'
 >                                                       in f' (MkSA a))
 >     return a = ArrayReader (\_ -> a)
 
-----------------
-Array indexing
-----------------
-
-> ix :: IntT x -> ArrayReader a (HCons x HNil) a
-> ix n = ArrayReader (\(MkSA (a, cursor)) -> a ! (cursor + toValue n))
-
-----------------
-Constructors
-----------------
-
-Stencil constructor, which sorts the spec pattern (using the Sort type family) 
+Stencil constructor/wrapper, which sorts the spec pattern (using the Sort type family) 
 since we do not know the order in which indexing will occur. 
 
 > data StencilM a r x y where
 >     StencilM :: (ArrayReader a spec y) -> StencilM a (Sort spec) x y
 
-Arrays with specifications 
 
-> data SpecArray x a = MkSA (Array Int a, Int) -- array paired with the current index
+Array indexing
+--------------------
 
-------------------------------------------------
+> ix :: IntT x -> ArrayReader a (HCons x HNil) a
+> ix n = ArrayReader (\(MkSA (a, cursor)) -> a ! (cursor + toValue n))
+
+
 Specification definitions
 ------------------------------------------------
 
@@ -120,7 +124,6 @@ Backward-oriented stencils
 > type instance BackwardP Z     = HNil
 > type instance BackwardP (S n) = HCons (Neg (S n)) (BackwardP n)  
 
-------------------------------------
 Type-level lists
 ------------------------------------
 
@@ -176,11 +179,8 @@ Single pass of bubble sort
 > type instance SortLeft' (Neg m) (S n) p q = (p, q)
 > type instance SortLeft' (Neg (S m)) (Neg (S n)) p q = SortLeft' (Neg m) (Neg n) p q
 
----------------------------
 Type-level integers
 ---------------------------
-
-Type-level integers
 
 > data Z
 > data S n 
@@ -198,6 +198,8 @@ Type-level integers
 > data IntT n where
 >    Neg :: Nat (S n) -> IntT (Neg (S n))
 >    Pos :: Nat n -> IntT n
+
+Note that zero is "positive"
 
 > intTtoInt :: IntT n -> Int
 > intTtoInt (Pos n) = natToInt n
