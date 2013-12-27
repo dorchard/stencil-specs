@@ -3,8 +3,13 @@
 
 > import Data.Array
 
+------------------------------------------------
+Preface
+------------------------------------------------
+
 The following shows how to use Haskell's type system for defining data access pattern specifications
-on stencil computations (common in finite element approaches). It uses some type-level machinery
+on stencil computations (common in finite element approaches). This is defined here only for
+one-dimensional arrays. It uses some type-level machinery
 (type families and GADTs) and indexed monads [1,2] (the dual of indexed comonads [3]) to abstract
 the composition of computations with specifications. 
 
@@ -38,8 +43,10 @@ fooFwd has a 'forward' pattern to depth of 2
 >                        return $ a + b + c
 
 ------------------------------------------------
+Indexed monad
+------------------------------------------------
 
-"Indexed monad" (see http://github.com/dorchard/ixmonad and Petricek, Orchard, Mycroft "Coeffects: Unified static analysis of context-dependence", ICALP 2013)
+See [1,2,3] above.
 
 > class IxMonad (m :: * -> * -> *) where
 >     type MPlus m s t 
@@ -63,15 +70,20 @@ Reader-like wrapper on array stencil computations, with elemet type e to e'
 >     type MPlus (ArrayReader e) s t = Append s t -- append specs
 >     type MUnit (ArrayReader e) = HNil           -- empty spec
 
->     (ArrayReader f) >>= k = ArrayReader (\(MkSA a) -> let (ArrayReader f') = k (f (MkSA a)) in f' (MkSA a))
+>     (ArrayReader f) >>= k = ArrayReader (\(MkSA a) -> let (ArrayReader f') = k (f (MkSA a))
+>                                                       in f' (MkSA a))
 >     return a = ArrayReader (\_ -> a)
 
-------------------------------------------------
-
+----------------
 Array indexing
+----------------
 
 > ix :: IntT x -> ArrayReader a (HCons x HNil) a
-> ix n = ArrayReader (\(MkSA a) -> a ! (toValue n))
+> ix n = ArrayReader (\(MkSA (a, cursor)) -> a ! (cursor + toValue n))
+
+----------------
+Constructors
+----------------
 
 Stencil constructor, which sorts the spec pattern (using the Sort type family) 
 since we do not know the order in which indexing will occur. 
@@ -81,10 +93,11 @@ since we do not know the order in which indexing will occur.
 
 Arrays with specifications 
 
-> data SpecArray x a = MkSA (Array Int a)
+> data SpecArray x a = MkSA (Array Int a, Int) -- array paired with the current index
 
 ------------------------------------------------
-The following defines the specifications.
+Specification definitions
+------------------------------------------------
 
 Forward-oriented stencil specification
 
@@ -107,7 +120,9 @@ Backward-oriented stencils
 > type instance BackwardP Z     = HNil
 > type instance BackwardP (S n) = HCons (Neg (S n)) (BackwardP n)  
 
-Here on in is lots of type-level stuff for type-level lists, integers, and sorting lists
+------------------------------------
+Type-level lists
+------------------------------------
 
 > type family Append s t
 > type instance Append HNil t = t
@@ -120,6 +135,9 @@ Here on in is lots of type-level stuff for type-level lists, integers, and sorti
 >     HNil :: HList HNil
 >     HCons :: x -> HList xs -> HList (HCons x xs)
 
+List sorting uses bubble sort (since this is easy to define inductively and for
+the type system to handle!)
+
 > type Sort l = BSort l l
 
 N-passes of bubble for a list of length N 
@@ -128,8 +146,41 @@ N-passes of bubble for a list of length N
 > type instance BSort l HNil = l
 > type instance BSort l (HCons x y) = BSort (Bubble l) y
 
+Type-level sorting
 
-Type-level natural numbers and integers for relative indices
+> type family Fst t
+> type instance Fst (a, b) = a
+
+> type family Snd t 
+> type instance Snd (a, b) = b
+
+Single pass of bubble sort
+
+> type family Bubble l
+> type instance Bubble (HCons a HNil) = HCons a HNil
+> type instance Bubble (HCons a (HCons b c)) = HCons (Fst (SortLeft a b))
+>                                             (Bubble (HCons (Snd (SortLeft a b)) c))
+
+> type SortLeft n m = SortLeft' n m n m  
+
+> type family SortLeft' n m p q 
+
+> type instance SortLeft' Z Z p q = (p, q)
+> type instance SortLeft' Z (S m) p q = (p, q)
+> type instance SortLeft' (S m) Z p q = (q, p)
+> type instance SortLeft' (S m) (S n) p q = SortLeft' m n p q
+
+> type instance SortLeft' Z (Neg m) p q = (q, p)
+> type instance SortLeft' (S m) (Neg n) p q = (q, p)
+> type instance SortLeft' (Neg m) Z p q = (p, q)
+> type instance SortLeft' (Neg m) (S n) p q = (p, q)
+> type instance SortLeft' (Neg (S m)) (Neg (S n)) p q = SortLeft' (Neg m) (Neg n) p q
+
+---------------------------
+Type-level integers
+---------------------------
+
+Type-level integers
 
 > data Z
 > data S n 
@@ -163,39 +214,3 @@ Type-level natural numbers and integers for relative indices
 
 > instance (ToValue m Int, ToValue n Int) => ToValue (m, n) (Int, Int) where
 >     toValue (m, n) = (toValue m, toValue n)
-
-
-Type-level sorting
-
-> type family Fst t
-> type instance Fst (a, b) = a
-
-> type family Snd t 
-> type instance Snd (a, b) = b
-
-Single pass of bubble sort
-
-> type family Bubble l
-> type instance Bubble (HCons a HNil) = HCons a HNil
-> type instance Bubble (HCons a (HCons b c)) = HCons (Fst (SortLeft a b))
->                                             (Bubble (HCons (Snd (SortLeft a b)) c))
-
-> type SortLeft n m = SortLeft' n m n m  
-
-> type family SortLeft' n m p q 
-
-> type instance SortLeft' Z Z p q = (p, q)
-> type instance SortLeft' Z (S m) p q = (p, q)
-> type instance SortLeft' (S m) Z p q = (q, p)
-> type instance SortLeft' (S m) (S n) p q = SortLeft' m n p q
-
-> type instance SortLeft' Z (Neg m) p q = (q, p)
-> type instance SortLeft' (S m) (Neg n) p q = (q, p)
-> type instance SortLeft' (Neg m) Z p q = (p, q)
-> type instance SortLeft' (Neg m) (S n) p q = (p, q)
-> type instance SortLeft' (Neg (S m)) (Neg (S n)) p q = SortLeft' (Neg m) (Neg n) p q
-
-
-
-
-
