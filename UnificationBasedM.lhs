@@ -19,7 +19,7 @@ the composition of computations with specifications.
 Note, this also uses Haskell's "rebindable syntax option" so that do notation can be redefined
 over indexed monads. We therefore need to import a whole load of stuff from Prelude manually:
 
-> import Prelude hiding (Monad(..)) -- (Functor(..), Num(..), Int, (+), flip, ($), fail)
+> import Prelude hiding (Monad(..)) 
 
 Example stencils with data access specifications
 ------------------------------------------------
