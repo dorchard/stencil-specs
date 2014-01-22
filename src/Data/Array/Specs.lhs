@@ -17,18 +17,18 @@
 
 > import Data.Array
 
- import Data.HList
+> import Data.HList
 
 > import GHC.Prim
 
-> data HNil
-> data HCons x xs
+ data HNil
+ data HCons x xs
 
-> data HList t where
->     HNil :: HList HNil
->     HCons :: x -> HList xs -> HList (Cons x xs)
+ data HList t where
+     HNil :: HList HNil
+     HCons :: x -> HList xs -> HList (Cons x xs)
 
-> type HList t = () :: Constraint
+ type HList t = () :: Constraint
 
 Type-level natural numbers and integers for relative indices
 
@@ -167,12 +167,12 @@ Playing around with some other options
 
 Inverse
 
-> (!!!<) :: (NotMember n negs, HList negs, ToValue n i, Ix i) => (negs := (Array i a)) -> n -> a
-> (Spec x) !!!< n = x ! (toValue n)
+ (!!!<) :: (NotMember n negs, HList negs, ToValue n i, Ix i) => (negs := (Array i a)) -> n -> a
+ (Spec x) !!!< n = x ! (toValue n)
 
-> class NotMemberP x xs 
-> instance NotMemberP x HNil
-> instance (NotMemberP x xs) => NotMemberP x (HCons y xs)
+ class NotMemberP x xs 
+ instance NotMemberP x HNil
+ instance (NotMemberP x xs) => NotMemberP x (HCons y xs)
 
 > data False
 > data True
@@ -182,12 +182,12 @@ Inverse
 > instance MemberPf x (HCons x xs) True
 > instance (MemberPf x xs t) => MemberPf x (HCons y xs) t
 
-> type family NotMember x (xs :: HList)  :: Constraint
-> type instance NotMember x HNil = (MemberPf x HNil False)
-> type instance NotMember x (HCons y xs) = (MemberPf x (HCons y xs) False, NotMember x xs)
+ type family NotMember x (xs :: HList)  :: Constraint
+ type instance NotMember x HNil = (MemberPf x HNil False)
+ type instance NotMember x (HCons y xs) = (MemberPf x (HCons y xs) False, NotMember x xs)
 
-> foop :: (Num a, NSymm (S Z) x, HList x) => (x := (Array Int a)) -> a
-> foop x = x !!!< (Pos (S Z)) --  x !!!< (Neg (S Z))
+ foop :: (Num a, NSymm (S Z) x, HList x) => (x := (Array Int a)) -> a
+ foop x = x !!!< (Pos (S Z)) --  x !!!< (Neg (S Z))
 
 
 > ntest :: MemberPf n xs False => n -> xs -> ()

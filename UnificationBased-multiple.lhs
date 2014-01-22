@@ -34,24 +34,27 @@ a three-point symmetrical stencil to depth of 1, indexing the current
 position (at offset 0, written Pos Z), at offset 1 (written (Pos (S Z))), and
 offset -1 (written (Neg (S Z))). 
 
+> fooSym :: (Num a) => StencilM a (Symmetrical (S Z)) a a
+> fooSym = StencilM $ do a <- ix (Pos Z)
+>                        b <- ix (Pos (S Z))
+>                        c <- ix (Neg (S Z))
+>                        return $ a + b + c 
 
-> fooSym2 :: (Num a) => StencilMN a (S (S Z)) (HCons (Forward (S Z)) (HCons (Forward (S Z)) HNil)) a a
+The following is a binary stencil taking two arrays
+
+
+> fooSym2 :: (Num a) => StencilMN a (S (S Z)) (HCons (Forward (S Z)) (HCons (Forward (S (S Z))) HNil)) a a
 > fooSym2 = StencilMN $ 
 >            do uc <- ixN Z (Pos Z)
 >               ur <- ixN Z (Pos (S Z))
 >                    
 >               vc <- ixN (S Z) (Pos Z)
 >               vr <- ixN (S Z) (Pos (S Z))
+>               vrr <- ixN (S Z) (Pos (S (S Z)))
  
->               return $ uc + ur + vc + vr
+>               return $ uc + ur + vc + vr + vrr
 
 
-
-> fooSym :: (Num a) => StencilM a (Symmetrical (S Z)) a a
-> fooSym = StencilM $ do a <- ix (Pos Z)
->                        b <- ix (Pos (S Z))
->                        c <- ix (Neg (S Z))
->                        return $ a + b + c 
 
 ---------------------------------
 The following causes a type error as it violates the specification
@@ -116,21 +119,20 @@ for array stencil computations, with elemet type e to e'
 >     return a = ArrayReader (\_ -> a)
 
 
+n-tuple of 1D arrays 
 
-> type family VAppend n s t
-> type instance VAppend Z HNil HNil = HNil
-> type instance VAppend (S n) (HCons s ss) (HCons t ts) = HCons (Append s t) (VAppend n ss ts)
-
-
+> type family Promote n x
+> type instance Promote Z x = HNil
+> type instance Promote (S n) x = HCons x (Promote n x)
 
 > instance IxMonad (NArrayReader n e) where
 >     type MPlus (NArrayReader n e) s t = VAppend n s t -- append specs
->     type MUnit (NArrayReader n e)     = HNil          -- empty spec
+>     type MUnit (NArrayReader n e)     = Promote n HNil -- empty spec
 
 >     (NArrayReader f) >>= k = NArrayReader (\x -> let (NArrayReader f') = k (f $ unsafeCoerce x)
 >                                                  in f' (unsafeCoerce x))
 
->     return a = NArrayReader (\SAVNil -> a)
+>     return a = NArrayReader (\_ -> a)
 
 
 Stencil constructor/wrapper, which sorts the spec pattern (using the Sort type family) 
@@ -139,6 +141,7 @@ since we do not know the order in which indexing will occur.
 > data StencilM a r x y where
 >     StencilM :: (ArrayReader a spec y) -> StencilM a (Sort spec) x y
 
+N-tuple version
 
 > data StencilMN a n r x y where
 >     StencilMN :: (NArrayReader n a spec y) -> StencilMN a n (VSort spec) x y
@@ -147,41 +150,46 @@ since we do not know the order in which indexing will occur.
 Array indexing
 --------------------
 
+Unary stencil indexing is straightword
+
 > ix :: IntT x -> ArrayReader a (HCons x HNil) a
 > ix n = ArrayReader (\(MkSA (a, cursor)) -> a ! (cursor + toValue n))
+
+Indexing for n-ary stencils is a little more complex
+
+> ixN :: (IndexV m n, LT m n) =>  Nat m -> IntT i -> NArrayReader n a (InjectAt m n i) a
+> ixN m i = NArrayReader (\x -> let (MkSA (a, cursor)) = projV m x
+>                               in a ! (cursor + toValue i))
+
+
+i.e. index the mth array of n with index i
+
+`InjectAt m n i` creates a vector of size n where the m'th position is a singleton 
+list with index i and everywhere else is an empty list
+
+> type family   InjectAt m n r
+> type instance InjectAt Z Z r = HNil
+> type instance InjectAt Z (S n) r = HCons (HCons r HNil) (Rest n)
+> type instance InjectAt (S m) (S n) r = HCons HNil (InjectAt m n r)
 
 > type family Rest n 
 > type instance Rest Z = HNil
 > type instance Rest (S n) = HCons HNil (Rest n)
 
-> type family F m n r
-> type instance F Z Z r = HNil
-> type instance F Z (S n) r = HCons r (Rest n)
-> type instance F (S m) (S n) r = HCons HNil (F m n r)
-
-> type family IxT n ts
-> type instance IxT Z (HCons x xs) = x
-> type instance IxT (S n) (HCons x xs) = IxT n xs
-
- indexV :: LT m n => Nat m -> SAVector n specs e -> SpecArray (IxT m specs) e
- indexV Z (SAVCons x _) = x
- indexV (S n) (SAVCons x xs) = indexV n xs
+`projV m` projects the mth SpecArray out of an n-tuple of SpecArrays (and ProjV computes the type-level version)
 
 > class LT m n => IndexV m n where
->     indexV :: Nat m -> SAVector n specs e -> SpecArray (IxT m specs) e
+>     projV :: Nat m -> SAVector n specs e -> SpecArray (ProjV m specs) e
 
 > instance IndexV Z (S n) where
->     indexV Z (SAVCons x _) = x
+>     projV Z (SAVCons x _) = x
 
 > instance (LT m n, IndexV m n) => IndexV (S m) (S n) where
->     indexV (S n) (SAVCons x xs) = indexV n xs
+>     projV (S n) (SAVCons x xs) = projV n xs
 
-> ixN :: (IndexV m n, LT m n) =>  Nat m -> IntT x -> NArrayReader n a (F m n x) a
-> ixN m i = NArrayReader (\x -> let (MkSA (a, cursor)) = indexV m x
->                               in a ! (cursor + toValue i))
-
- -- = ArrayReader (\(MkSA (a, cursor)) -> a ! (cursor + toValue n))
-
+> type family ProjV n ts
+> type instance ProjV Z (HCons x xs) = x
+> type instance ProjV (S n) (HCons x xs) = ProjV n xs
 
 Specification definitions
 ------------------------------------------------
@@ -210,11 +218,6 @@ Backward-oriented stencils
 Type-level lists
 ------------------------------------
 
-> data Vector n t where
->     VNil :: Vector Z HNil
->     VCons :: x -> Vector n xs -> Vector (S n) (HCons x xs)
-
-
 > type family Append s t
 > type instance Append HNil t = t
 > type instance Append (HCons s ss) t = HCons s (Append ss t)
@@ -225,13 +228,6 @@ Type-level lists
 > data HList t where
 >     HNil :: HList HNil
 >     HCons :: x -> HList xs -> HList (HCons x xs)
-
-Sort a vector of list
-
-> type family VSort l  
-> type instance VSort HNil = HNil
-> type instance VSort (HCons x xs) = HCons (Sort x) (VSort xs)
-
 
 List sorting uses bubble sort (since this is easy to define inductively and for
 the type system to handle!)
@@ -273,6 +269,27 @@ Single pass of bubble sort
 > type instance SortLeft' (Neg m) Z p q = (p, q)
 > type instance SortLeft' (Neg m) (S n) p q = (p, q)
 > type instance SortLeft' (Neg (S m)) (Neg (S n)) p q = SortLeft' (Neg m) (Neg n) p q
+
+Type-level sized vectors
+---------------------------
+
+> data Vector n t where
+>     VNil :: Vector Z HNil
+>     VCons :: x -> Vector n xs -> Vector (S n) (HCons x xs)
+
+Poinwise sort a vector of lists
+
+> type family VSort l  
+> type instance VSort HNil = HNil
+> type instance VSort (HCons x xs) = HCons (Sort x) (VSort xs)
+
+Pointwise append if vectors of size n
+
+> type family VAppend n s t
+> type instance VAppend Z HNil HNil = HNil
+> type instance VAppend (S n) (HCons s ss) (HCons t ts) = HCons (Append s t) (VAppend n ss ts)
+
+
 
 Type-level integers
 ---------------------------
