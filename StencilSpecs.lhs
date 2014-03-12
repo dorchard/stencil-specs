@@ -1,11 +1,8 @@
 > {-# LANGUAGE GADTs, EmptyDataDecls, MultiParamTypeClasses, FlexibleInstances, UndecidableInstances #-}
 > {-# LANGUAGE TypeFamilies, FlexibleContexts, RebindableSyntax #-}
 
-> {-# LANGUAGE NoMonomorphismRestriction #-}
-
+> import Control.IxMonad
 > import Data.Array
-
-> import Unsafe.Coerce
 
 Preface
 ------------------------------------------------
@@ -34,60 +31,29 @@ a three-point symmetrical stencil to depth of 1, indexing the current
 position (at offset 0, written Pos Z), at offset 1 (written (Pos (S Z))), and
 offset -1 (written (Neg (S Z))). 
 
-> fooSym :: (Num a) => StencilM a (Symmetrical (S Z)) a a
-> fooSym = StencilM $ do a <- ix (Pos Z)
->                        b <- ix (Pos (S Z))
->                        c <- ix (Neg (S Z))
->                        return $ a + b + c 
-
-The following is a binary stencil taking two arrays
-
-
-> fooSym2 :: (Num a) => StencilMN a (S (S Z)) (HCons (Forward (S Z)) (HCons (Forward (S (S Z))) HNil)) a a
-> fooSym2 = StencilMN $ 
->            do uc <- ixN Z (Pos Z)
->               ur <- ixN Z (Pos (S Z))
->                    
->               vc <- ixN (S Z) (Pos Z)
->               vr <- ixN (S Z) (Pos (S Z))
->               vrr <- ixN (S Z) (Pos (S (S Z)))
- 
->               return $ uc + ur + vc + vr + vrr
-
-
+> fooSym :: (Num a) => Stencil (Symmetrical (S Z)) a a
+> fooSym = Stencil $ do a <- ix (Pos Z)
+>                       b <- ix (Pos (S Z))
+>                       c <- ix (Neg (S Z))
+>                       return $ a + b + c 
 
 ---------------------------------
 The following causes a type error as it violates the specification
 of symmetry
 
-> --  fooSymBroken :: (Num a) => StencilM a (Symmetrical (S Z)) a a
-> -- fooSymBroken = StencilM $ do a <- ix (Pos Z)
-> --                              b <- ix (Pos (S Z))
-> --                              return $ a + b 
+> --  fooSymBroken :: (Num a) => Stencil (Symmetrical (S Z)) a a
+> -- fooSymBroken = Stencil $ do a <- ix (Pos Z)
+> --                             b <- ix (Pos (S Z))
+> --                             return $ a + b 
 
 
 fooFwd has a 'forward' pattern to depth of 2
 
-> fooFwd :: Num a => StencilM a (Forward (S (S Z))) a a
-> fooFwd = StencilM $ do a <- ix (Pos Z)
->                        b <- ix (Pos (S Z))
->                        c <- ix (Pos (S (S Z)))
->                        return $ a + b + c
-
-Indexed monad
-------------------------------------------------
-
-See [1],[2],[3] above.
-
-> class IxMonad (m :: * -> * -> *) where
->     type MPlus m s t 
->     type MUnit m 
-
->     (>>=) ::  m r a -> (a -> m s b) -> m (MPlus m s r) b
->     return :: a -> m (MUnit m) a
-
->     fail :: String -> m () () 
->     fail = error "Fail not implemented"
+> fooFwd :: Num a => Stencil (Forward (S (S Z))) a a
+> fooFwd = Stencil $ do a <- ix (Pos Z)
+>                       b <- ix (Pos (S Z))
+>                       c <- ix (Pos (S (S Z)))
+>                       return $ a + b + c
 
 
 Specification-indexed array reader monad
@@ -97,13 +63,6 @@ The following defines a kind of indexed reader monad
 (http://www.cl.cam.ac.uk/~dao29/drafts/ixmonad-eabstract.pdf)
 for array stencil computations, with elemet type e to e'
 
-> data SAVector n t e where
->     SAVNil :: SAVector Z HNil e
->     SAVCons :: (SpecArray r e) -> SAVector n rs e -> SAVector (S n) (HCons r rs) e
-
-> data NArrayReader n e r e' = NArrayReader (SAVector n r e -> e')
-
-
 > data ArrayReader e r e' = ArrayReader (SpecArray r e -> e')
 
 1D array paired with the current "cursor" position
@@ -111,85 +70,26 @@ for array stencil computations, with elemet type e to e'
 > data SpecArray x a = MkSA (Array Int a, Int) 
 
 > instance IxMonad (ArrayReader e) where
->     type MPlus (ArrayReader e) s t = Append s t -- append specs
->     type MUnit (ArrayReader e) = HNil           -- empty spec
+>     type Plus (ArrayReader e) s t = Append s t -- append specs
+>     type Unit (ArrayReader e) = HNil           -- empty spec
 
 >     (ArrayReader f) >>= k = ArrayReader (\(MkSA a) -> let (ArrayReader f') = k (f (MkSA a))
 >                                                       in f' (MkSA a))
 >     return a = ArrayReader (\_ -> a)
 
-
-n-tuple of 1D arrays 
-
-> type family Promote n x
-> type instance Promote Z x = HNil
-> type instance Promote (S n) x = HCons x (Promote n x)
-
-> instance IxMonad (NArrayReader n e) where
->     type MPlus (NArrayReader n e) s t = VAppend n s t -- append specs
->     type MUnit (NArrayReader n e)     = Promote n HNil -- empty spec
-
->     (NArrayReader f) >>= k = NArrayReader (\x -> let (NArrayReader f') = k (f $ unsafeCoerce x)
->                                                  in f' (unsafeCoerce x))
-
->     return a = NArrayReader (\_ -> a)
-
-
 Stencil constructor/wrapper, which sorts the spec pattern (using the Sort type family) 
 since we do not know the order in which indexing will occur. 
 
-> data StencilM a r x y where
->     StencilM :: (ArrayReader a spec y) -> StencilM a (Sort spec) x y
-
-N-tuple version
-
-> data StencilMN a n r x y where
->     StencilMN :: (NArrayReader n a spec y) -> StencilMN a n (VSort spec) x y
+> data Stencil r x y where
+>     Stencil :: (ArrayReader x spec y) -> Stencil (Sort spec) x y
 
 
 Array indexing
 --------------------
 
-Unary stencil indexing is straightword
-
 > ix :: IntT x -> ArrayReader a (HCons x HNil) a
 > ix n = ArrayReader (\(MkSA (a, cursor)) -> a ! (cursor + toValue n))
 
-Indexing for n-ary stencils is a little more complex
-
-> ixN :: (IndexV m n, LT m n) =>  Nat m -> IntT i -> NArrayReader n a (InjectAt m n i) a
-> ixN m i = NArrayReader (\x -> let (MkSA (a, cursor)) = projV m x
->                               in a ! (cursor + toValue i))
-
-
-i.e. index the mth array of n with index i
-
-`InjectAt m n i` creates a vector of size n where the m'th position is a singleton 
-list with index i and everywhere else is an empty list
-
-> type family   InjectAt m n r
-> type instance InjectAt Z Z r = HNil
-> type instance InjectAt Z (S n) r = HCons (HCons r HNil) (Rest n)
-> type instance InjectAt (S m) (S n) r = HCons HNil (InjectAt m n r)
-
-> type family Rest n 
-> type instance Rest Z = HNil
-> type instance Rest (S n) = HCons HNil (Rest n)
-
-`projV m` projects the mth SpecArray out of an n-tuple of SpecArrays (and ProjV computes the type-level version)
-
-> class LT m n => IndexV m n where
->     projV :: Nat m -> SAVector n specs e -> SpecArray (ProjV m specs) e
-
-> instance IndexV Z (S n) where
->     projV Z (SAVCons x _) = x
-
-> instance (LT m n, IndexV m n) => IndexV (S m) (S n) where
->     projV (S n) (SAVCons x xs) = projV n xs
-
-> type family ProjV n ts
-> type instance ProjV Z (HCons x xs) = x
-> type instance ProjV (S n) (HCons x xs) = ProjV n xs
 
 Specification definitions
 ------------------------------------------------
@@ -270,27 +170,6 @@ Single pass of bubble sort
 > type instance SortLeft' (Neg m) (S n) p q = (p, q)
 > type instance SortLeft' (Neg (S m)) (Neg (S n)) p q = SortLeft' (Neg m) (Neg n) p q
 
-Type-level sized vectors
----------------------------
-
-> data Vector n t where
->     VNil :: Vector Z HNil
->     VCons :: x -> Vector n xs -> Vector (S n) (HCons x xs)
-
-Poinwise sort a vector of lists
-
-> type family VSort l  
-> type instance VSort HNil = HNil
-> type instance VSort (HCons x xs) = HCons (Sort x) (VSort xs)
-
-Pointwise append if vectors of size n
-
-> type family VAppend n s t
-> type instance VAppend Z HNil HNil = HNil
-> type instance VAppend (S n) (HCons s ss) (HCons t ts) = HCons (Append s t) (VAppend n ss ts)
-
-
-
 Type-level integers
 ---------------------------
 
@@ -328,8 +207,3 @@ Note that zero is "positive"
 
 > instance (ToValue m Int, ToValue n Int) => ToValue (m, n) (Int, Int) where
 >     toValue (m, n) = (toValue m, toValue n)
-
-> class LT a b where
-> instance LT Z (S n) where
-> instance LT n m => LT (S n) (S m) where
-

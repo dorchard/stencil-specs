@@ -1,0 +1,4 @@
+Stencil specifications in Haskell using 'indexed monads'.
+Requires the 'ixmonad' library: 
+  Try: cabal install ixmonad
+  Or, for the latest head version: http://github.com/dorchard/ixmonad
